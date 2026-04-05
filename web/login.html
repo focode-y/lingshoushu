@@ -1,10 +1,189 @@
-﻿<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>登录</title><link rel='stylesheet' href='/common.css'></head><body>
-<div style='max-width:360px;margin:12vh auto' class='card'>
-<h1>登录</h1><input id='email' placeholder='邮箱'><input id='password' type='password' placeholder='密码'><input id='company' placeholder='注册时公司名（注册用）'>
-<div class='row'><button onclick='login()'>登录</button><button onclick='register()'>注册</button></div><div id='msg' class='muted'></div>
-</div>
-<script>
-async function call(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});const d=await r.json();return{ok:r.ok,d};}
-async function login(){const r=await call('/api/auth/login',{email:email.value,password:password.value});if(!r.ok){msg.textContent=r.d.error||'失败';return;}localStorage.setItem('token',r.d.token);location.href='/company.html';}
-async function register(){const r=await call('/api/auth/register',{email:email.value,password:password.value,companyName:company.value});if(!r.ok){msg.textContent=r.d.error||'失败';return;}localStorage.setItem('token',r.d.token);location.href='/company.html';}
-</script></body></html>
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>登录</title>
+  <style>
+    :root{
+      --bg-1:#f2f5fb;
+      --bg-2:#dfe8f6;
+      --card:#ffffff;
+      --line:#d9e0ec;
+      --text:#111827;
+      --muted:#6b7280;
+      --accent:#0f4c81;
+      --accent-2:#1668ad;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      font-family:"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(1200px 500px at 12% -5%, #ffffff 0%, transparent 60%),
+        radial-gradient(1000px 450px at 92% 105%, #ffffff 0%, transparent 55%),
+        linear-gradient(145deg,var(--bg-1),var(--bg-2));
+      display:grid;
+      place-items:center;
+      padding:28px 16px;
+    }
+    .shell{
+      width:min(1020px,100%);
+      display:grid;
+      grid-template-columns:1.05fr .95fr;
+      background:rgba(255,255,255,.78);
+      border:1px solid #d5deeb;
+      border-radius:20px;
+      backdrop-filter:blur(6px);
+      overflow:hidden;
+      box-shadow:0 30px 80px rgba(15,36,66,.15);
+    }
+    .hero{
+      padding:46px 42px;
+      background:linear-gradient(165deg,#0f355a,#185383);
+      color:#f8fbff;
+      position:relative;
+      overflow:hidden;
+    }
+    .hero:before{
+      content:"";
+      position:absolute;
+      width:320px;height:320px;border-radius:50%;
+      right:-120px;top:-120px;
+      background:rgba(255,255,255,.12);
+    }
+    .hero:after{
+      content:"";
+      position:absolute;
+      width:240px;height:240px;border-radius:50%;
+      left:-90px;bottom:-90px;
+      background:rgba(255,255,255,.10);
+    }
+    .hero h1{
+      margin:0 0 14px;
+      font-size:34px;
+      line-height:1.2;
+      letter-spacing:.02em;
+      position:relative;
+      z-index:1;
+    }
+    .hero p{
+      margin:0;
+      line-height:1.8;
+      font-size:15px;
+      color:#d9e9f8;
+      position:relative;
+      z-index:1;
+    }
+    .panel{
+      padding:40px 34px;
+      background:var(--card);
+    }
+    .title{
+      margin:0 0 18px;
+      font-size:28px;
+      letter-spacing:.04em;
+    }
+    .sub{
+      margin:0 0 22px;
+      color:var(--muted);
+      font-size:13px;
+    }
+    .field{margin-bottom:14px}
+    .field label{
+      display:block;
+      font-size:12px;
+      color:#4b5563;
+      margin-bottom:6px;
+    }
+    input{
+      width:100%;
+      border:1px solid var(--line);
+      border-radius:10px;
+      padding:11px 12px;
+      font-size:14px;
+      outline:none;
+      transition:.18s border-color,.18s box-shadow;
+      background:#fbfdff;
+    }
+    input:focus{
+      border-color:#8db6d9;
+      box-shadow:0 0 0 3px rgba(70,127,178,.13);
+      background:#fff;
+    }
+    .actions{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      margin-top:18px;
+    }
+    button{
+      border:1px solid transparent;
+      border-radius:10px;
+      padding:11px 12px;
+      font-size:15px;
+      cursor:pointer;
+    }
+    .btn-login{
+      background:linear-gradient(135deg,var(--accent),var(--accent-2));
+      color:#fff;
+      font-weight:600;
+    }
+    .btn-register{
+      background:#fff;
+      border-color:#b8c7db;
+      color:#1f2937;
+      font-weight:600;
+    }
+    #msg{
+      min-height:22px;
+      margin-top:12px;
+      font-size:13px;
+      color:#b42318;
+    }
+    @media (max-width:900px){
+      .shell{grid-template-columns:1fr}
+      .hero{padding:26px 24px}
+      .hero h1{font-size:28px}
+      .panel{padding:26px 20px}
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <h1>票据系统</h1>
+      <p>用于请求书与领収书的规范化开具与台账管理。<br>登录后可继续使用你的公司预设、印章与商品类目。</p>
+    </section>
+    <section class="panel">
+      <h2 class="title">账号登录</h2>
+      <p class="sub">已有账号请登录；首次使用可直接注册。</p>
+      <div class="field">
+        <label for="email">邮箱</label>
+        <input id="email" placeholder="name@example.com">
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input id="password" type="password" placeholder="请输入密码">
+      </div>
+      <div class="field">
+        <label for="company">公司名（注册时填写）</label>
+        <input id="company" placeholder="注册新账号时填写公司名">
+      </div>
+      <div class="actions">
+        <button class="btn-login" onclick="login()">登录</button>
+        <button class="btn-register" onclick="register()">注册</button>
+      </div>
+      <div id="msg"></div>
+    </section>
+  </div>
+
+  <script>
+    async function call(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});const d=await r.json();return{ok:r.ok,d};}
+    async function login(){const r=await call('/api/auth/login',{email:email.value,password:password.value});if(!r.ok){msg.textContent=r.d.error||'失败';return;}localStorage.setItem('token',r.d.token);location.href='/company.html';}
+    async function register(){const r=await call('/api/auth/register',{email:email.value,password:password.value,companyName:company.value});if(!r.ok){msg.textContent=r.d.error||'失败';return;}localStorage.setItem('token',r.d.token);location.href='/company.html';}
+  </script>
+</body>
+</html>

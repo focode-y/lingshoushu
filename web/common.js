@@ -27,10 +27,8 @@ function shell(title, activeKey, innerHtml) {
         <a class="${activeKey==='products'?'active':''}" href="/products.html">公司主要商品类目</a>
         <a class="${activeKey==='issue-request'?'active':''}" href="/issue-request.html">开请求书</a>
         <a class="${activeKey==='issue-receipt'?'active':''}" href="/issue-receipt.html">开领収书</a>
-        <a class="${activeKey==='issue-delivery'?'active':''}" href="/issue-delivery.html">开纳品书</a>
         <a class="${activeKey==='request-list'?'active':''}" href="/request-list.html">请求书列表</a>
         <a class="${activeKey==='receipt-list'?'active':''}" href="/receipt-list.html">领収书列表</a>
-        <a class="${activeKey==='delivery-list'?'active':''}" href="/delivery-list.html">纳品书列表</a>
         <a class="${activeKey==='ledger'?'active':''}" href="/ledger.html">总台账</a>
         <a class="${activeKey==='account'?'active':''}" href="/account.html">账号管理</a>
         <a class="${activeKey==='audit'?'active':''}" href="/audit.html">操作记录</a>
