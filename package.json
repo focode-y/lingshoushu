@@ -1,10 +1,12 @@
-﻿{
+{
   "name": "receipt-saas-mvp",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -12,5 +14,8 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.80.0"
   }
 }
