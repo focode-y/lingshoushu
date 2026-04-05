@@ -8,7 +8,30 @@ const emailEl = document.getElementById('email');
 const passwordEl = document.getElementById('password');
 const companyEl = document.getElementById('company');
 const msgEl = document.getElementById('msg');
-async function call(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});const d=await r.json();return{ok:r.ok,d};}
-async function login(){const r=await call('/api/auth/login',{email:emailEl.value,password:passwordEl.value});if(!r.ok){msgEl.textContent=r.d.error||'失败';return;}localStorage.setItem('token',r.d.token);location.href='/company.html';}
-async function register(){const r=await call('/api/auth/register',{email:emailEl.value,password:passwordEl.value,companyName:companyEl.value});if(!r.ok){msgEl.textContent=r.d.error||'失败';return;}localStorage.setItem('token',r.d.token);location.href='/company.html';}
+async function call(u,b){
+  const r = await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+  let d = {};
+  try { d = await r.json(); }
+  catch {
+    const t = await r.text().catch(()=> '');
+    d = { error: t ? `接口返回非JSON（HTTP ${r.status}）` : `接口不可用（HTTP ${r.status}）` };
+  }
+  return { ok:r.ok, d, status:r.status };
+}
+async function login(){
+  try{
+    msgEl.textContent = '';
+    const r=await call('/api/auth/login',{email:emailEl.value,password:passwordEl.value});
+    if(!r.ok){msgEl.textContent=r.d.error||`登录失败（HTTP ${r.status}）`;return;}
+    localStorage.setItem('token',r.d.token);location.href='/company.html';
+  }catch(e){msgEl.textContent='登录请求失败，请确认当前站点已连接后端 API';}
+}
+async function register(){
+  try{
+    msgEl.textContent = '';
+    const r=await call('/api/auth/register',{email:emailEl.value,password:passwordEl.value,companyName:companyEl.value});
+    if(!r.ok){msgEl.textContent=r.d.error||`注册失败（HTTP ${r.status}）`;return;}
+    localStorage.setItem('token',r.d.token);location.href='/company.html';
+  }catch(e){msgEl.textContent='注册请求失败，请确认当前站点已连接后端 API';}
+}
 </script></body></html>
