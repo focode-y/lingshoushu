@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<title>領収書作成</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+.page{background:#fff;border:1px solid #d8deea;border-radius:12px;padding:26px 26px 30px;max-width:920px;position:relative}
+.topbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.doc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:16px}
+.doc-title{font-size:38px;font-weight:800;letter-spacing:.18em;line-height:1.05;white-space:nowrap}
+.meta{border:1px solid #d8dce3;border-radius:8px;padding:10px 16px;font-size:14px;min-width:240px;margin-left:auto;flex-shrink:0}
+.meta .row{display:grid;grid-template-columns:72px 1fr;align-items:center;min-height:28px;border-bottom:1px solid #f3f4f6}
+.meta .row:last-child{border-bottom:none}
+.meta .row>span{font-size:12px;color:#6b7280;letter-spacing:.04em}
+.meta .row input{text-align:right;border:none;background:transparent;font-size:14px;padding:2px 0;color:#111827;width:100%}
+.meta .row input:focus{outline:1px solid #0f766e;border-radius:3px}
+.party{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.block{border:1px solid #e6eaf3;border-radius:12px;padding:12px 14px}
+.block h3{margin:0 0 6px;font-size:11px;color:#9ca3af;letter-spacing:.1em}
+.name{font-size:24px;font-weight:700;border-bottom:2px solid #111827;padding-bottom:5px;margin-bottom:10px;line-height:1.1}
+.name input{font-size:24px;font-weight:700}
+.line{display:flex;align-items:center;gap:10px;font-size:14px;margin:5px 0;line-height:1.5}
+.line>span:first-child{min-width:52px;font-size:12px;color:#6b7280;flex-shrink:0;letter-spacing:.03em}
+.amount{border:2px solid #111827;border-radius:11px;padding:11px 14px;display:flex;justify-content:space-between;align-items:center;margin:14px 0}
+.amount .l{font-size:18px;font-weight:500}
+.amount .v{font-size:30px;font-weight:600;line-height:1}
+.items{width:100%;border-collapse:collapse}
+.items th,.items td{border:1px solid #e6eaf3;padding:6px 7px;font-size:13px;vertical-align:middle;line-height:1.35}
+.items th{background:#111827;color:#fff;font-size:12px;letter-spacing:.04em;text-align:center}
+.items td input,.items td select{width:100%;padding:4px 5px;font-size:14px;line-height:1.3;text-align:center}
+.items td.r{text-align:right}
+.items td.c{text-align:center}.items tbody td{text-align:center}
+.items tfoot td{font-weight:500;background:#f8faff}
+.memo-wrap{margin-top:14px;border:1px solid #e6eaf3;border-radius:10px;padding:12px 14px;font-size:14px}
+.memo-wrap label{font-size:12px;color:#6b7280;display:block;margin-bottom:4px}
+.issuer{margin-top:12px;position:relative;min-height:90px}
+.stamp-wrap{position:absolute;right:20px;bottom:0;cursor:grab;touch-action:none;z-index:30;user-select:none}
+.stamp{display:inline-flex;align-items:center;justify-content:center;overflow:hidden;pointer-events:none}
+.stamp img{display:block;width:auto;height:auto;max-width:90px;max-height:90px;pointer-events:none;user-select:none;-webkit-user-drag:none}
+.op-col{width:70px}
+.smallbtn{font-size:12px;padding:5px 8px}
+
+@media print{
+  .topbar,.side,.card:first-child,.op-col,button{display:none!important}
+  .main{padding:0}
+  .page{border:none;padding:10mm;max-width:none}
+  input,select,textarea{border:none!important;background:transparent!important;appearance:none!important;-webkit-appearance:none!important;-moz-appearance:none!important;padding:0!important;margin:0!important;box-shadow:none!important}
+  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{display:none!important;-webkit-appearance:none!important}
+  .meta .row input{text-align:right}
+  .stamp-wrap{cursor:default!important}
+}
+@media(max-width:768px){
+  .page{border:none;border-radius:0;padding:14px;box-shadow:none}
+  .doc-head{flex-direction:column;gap:10px}
+  .doc-title{font-size:26px}
+  .meta{margin-left:0;min-width:0;width:100%}
+  .party{grid-template-columns:1fr}
+  .amount .v{font-size:22px}
+  .amount .l{font-size:15px}
+  .smallbtn{display:none}
+  .no-mobile{display:none}
+  .items{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .items table{min-width:520px}
+}
+</style>
+</head>
+<body>
+<script src="/common.js"></script>
+<script>
+shell('領収書作成','issue-receipt',`
+<div class='topbar'>
+  <button onclick='addRow()'>明細行を追加</button>
+  <button onclick='saveDoc()'>保存</button>
+  <button onclick='sendDoc()'>送信済みにする</button>
+  <button class='no-mobile' onclick='window.print()'>印刷 / PDF</button>
+  <button id='pdfBtn' onclick='downloadPDF()'>PDF 保存</button>
+  <button class='smallbtn' onclick='resetStampPos()'>印影位置をリセット</button><button class='smallbtn' onclick='confirmStampPos()'>印影位置を確定</button>
+</div>
+<div class='page' id='paper'>
+  <datalist id='product-list'></datalist>
+  <input type='hidden' id='doc_id'>
+  <div class='doc-head'>
+    <div class='doc-title'>領 収 書</div>
+    <div class='meta'>
+      <div class='row'><span>領収書番号</span><input id='doc_no'></div>
+      <div class='row'><span>発行日</span><input id='doc_date' type='date'></div>
+    </div>
+  </div>
+
+  <div class='party'>
+    <div class='block'>
+      <h3>宛先</h3>
+      <div class='name'><input id='customer' placeholder='宛先名'></div>
+    </div>
+    <div class='block'>
+      <h3>発行者</h3>
+      <div class='name' id='v_company_name'></div>
+      <div class='line'><span>住所</span><span id='v_address'></span></div>
+      <div class='line'><span>TEL</span><span id='v_phone'></span></div>
+      <div class='line' id='v_reg_line' style='display:none'><span>登録番号</span><span id='v_reg'></span></div>
+    </div>
+  </div>
+
+  <div class='amount'><span class='l'>お受取金額（税込）</span><span class='v'>¥ <span id='v_total'>0</span></span></div>
+
+  <table class='items'>
+    <thead><tr><th style='width:37%'>品名（商品マスタ選択/自由入力）</th><th style='width:8%'>数量</th><th style='width:10%'>税率</th><th style='width:10%'>入力区分</th><th style='width:16%'>入力単価</th><th style='width:14%'>税抜金額</th><th class='op-col'>操作</th></tr></thead>
+    <tbody id='tbody'></tbody>
+    <tfoot>
+      <tr><td colspan='5' class='r'>税抜小計</td><td class='r' id='v_subtotal'>0</td><td class='op-col'></td></tr>
+      <tr><td colspan='5' class='r'>税率10% 税額</td><td class='r' id='v_tax10'>0</td><td class='op-col'></td></tr>
+      <tr><td colspan='5' class='r'>税率8% 税額</td><td class='r' id='v_tax8'>0</td><td class='op-col'></td></tr>
+      <tr><td colspan='5' class='r'>合計（税込）</td><td class='r' id='v_total2'>0</td><td class='op-col'></td></tr>
+    </tfoot>
+  </table>
+
+  <div class='memo-wrap'>
+    <label>但し書き / 備考</label>
+    <input id='memo' placeholder='お品代として　など' style='width:100%'>
+  </div>
+
+  <div class='issuer'></div>
+  <div class='stamp-wrap' id='stamp_wrap'>
+    <div class='stamp' id='stamp_box'>印影</div>
+  </div>
+</div>
+`);
+
+const K_STAMP_POS='receipt_stamp_pos_v1';
+let productMap = new Map();
+
+function roundBy(n,m){return m==='floor'?Math.floor(n):m==='ceil'?Math.ceil(n):Math.round(n)}
+function parseNum(v){const n=Number(String(v||'').replace(/,/g,''));return Number.isFinite(n)?n:0}
+function renderStamp(src){const box=document.getElementById('stamp_box');box.innerHTML=src?`<img src='${src}'>`:'印影';}
+
+function applyStampPos(x,y){const w=document.getElementById('stamp_wrap');const paper=document.getElementById('paper');const maxX=Math.max(0,paper.clientWidth-w.offsetWidth-2);const maxY=Math.max(0,paper.clientHeight-w.offsetHeight-2);const nx=Math.min(Math.max(0,Number(x)||0),maxX);const ny=Math.min(Math.max(0,Number(y)||0),maxY);w.style.left=nx+'px';w.style.top=ny+'px';w.style.right='auto';w.style.bottom='auto';}
+function saveStampPos(){const wrap=document.getElementById('stamp_wrap');const paper=document.getElementById('paper').getBoundingClientRect();const r=wrap.getBoundingClientRect();localStorage.setItem(K_STAMP_POS,JSON.stringify({x:r.left-paper.left,y:r.top-paper.top}));}
+function loadStampPos(){const raw=localStorage.getItem(K_STAMP_POS);if(!raw)return false;try{const p=JSON.parse(raw);if(typeof p.x==='number'&&typeof p.y==='number'){applyStampPos(p.x,p.y);saveStampPos();return true;}}catch(e){}return false;}
+function resetStampPos(){
+  const paper=document.getElementById('paper');
+  const wrap=document.getElementById('stamp_wrap');
+  const issuerBlock=document.querySelectorAll('.block')[1];
+  if(issuerBlock){
+    const pr=paper.getBoundingClientRect();
+    const ir=issuerBlock.getBoundingClientRect();
+    applyStampPos(ir.right-pr.left-wrap.offsetWidth-6, ir.bottom-pr.top-wrap.offsetHeight-6);
+  } else {
+    applyStampPos(paper.clientWidth-wrap.offsetWidth-20, paper.clientHeight-wrap.offsetHeight-20);
+  }
+  saveStampPos();
+}
+function confirmStampPos(){saveStampPos();alert('印影位置を保存しました');}
+function bindStampDrag(){const wrap=document.getElementById('stamp_wrap');const paper=document.getElementById('paper');let dragging=false,sx=0,sy=0,bx=0,by=0;
+  function start(e){dragging=true;wrap.style.cursor='grabbing';const rr=wrap.getBoundingClientRect();const pr=paper.getBoundingClientRect();bx=rr.left-pr.left;by=rr.top-pr.top;sx=(e.touches?e.touches[0].clientX:e.clientX);sy=(e.touches?e.touches[0].clientY:e.clientY);e.preventDefault();}
+  function move(e){if(!dragging)return;const cx=(e.touches?e.touches[0].clientX:e.clientX),cy=(e.touches?e.touches[0].clientY:e.clientY);const nx=Math.min(Math.max(0,bx+cx-sx),paper.clientWidth-wrap.offsetWidth);const ny=Math.min(Math.max(0,by+cy-sy),paper.clientHeight-wrap.offsetHeight);applyStampPos(nx,ny);e.preventDefault();}
+  function end(){if(!dragging)return;dragging=false;wrap.style.cursor='grab';saveStampPos();}
+  wrap.addEventListener('mousedown',start);document.getElementById('stamp_box').addEventListener('mousedown',start);window.addEventListener('mousemove',move);window.addEventListener('mouseup',end);
+  wrap.addEventListener('touchstart',start,{passive:false});window.addEventListener('touchmove',move,{passive:false});window.addEventListener('touchend',end);
+}
+
+async function loadCompanyPreset(){
+  const r=await api('/api/company');
+  if(!r.ok)return;
+  const c=r.data||{};
+  document.getElementById('v_company_name').textContent=c.company_name||'';
+  document.getElementById('v_address').textContent=c.address||'';
+  document.getElementById('v_phone').textContent=c.phone||'';
+  const reg=c.registration_no||'';document.getElementById('v_reg').textContent=reg;document.getElementById('v_reg_line').style.display=reg?'':'none';
+  renderStamp(c.stamp_path||'');
+}
+
+async function loadProductsForSuggest(){
+  const r=await api('/api/products');
+  if(!r.ok)return;
+  const dl=document.getElementById('product-list');
+  dl.innerHTML='';productMap.clear();
+  r.data.forEach(p=>{
+    productMap.set(p.name,{tax:p.default_tax_rate,price:p.default_unit_price});
+    const op=document.createElement('option');op.value=p.name;dl.appendChild(op);
+  });
+}
+
+function addRow(v={product_name:'',qty:1,tax_rate:10,input_mode:'inclusive',unit_price_input:0}){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td><input class='name' list='product-list' value="${v.product_name||''}" placeholder='商品名を入力または選択'></td><td><input class='qty c' type='number' min='0' value="${v.qty||1}"></td><td><select class='tax c'><option value='10'>10%</option><option value='8'>8%</option></select></td><td><select class='mode c'><option value='inclusive'>税込</option><option value='exclusive'>税抜</option></select></td><td><input class='price r' type='number' min='0' value="${v.unit_price_input||0}"></td><td class='r base'>0</td><td class='c op-col'><button onclick='this.closest("tr").remove();calc()'>削除</button></td>`;
+  tr.querySelector('.tax').value=String(v.tax_rate||10);
+  tr.querySelector('.mode').value=v.input_mode||'inclusive';
+  tr.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',calc));
+  tr.querySelector('.name').addEventListener('change',()=>applyProductPreset(tr));
+  document.getElementById('tbody').appendChild(tr);
+  calc();
+}
+
+function applyProductPreset(tr){
+  const name=tr.querySelector('.name').value.trim();
+  const p=productMap.get(name);if(!p)return;
+  tr.querySelector('.tax').value=String(p.tax===8?8:10);
+  if(!tr.querySelector('.price').value||Number(tr.querySelector('.price').value)===0){tr.querySelector('.price').value=String(Number(p.price||0));}
+  calc();
+}
+
+function collect(){
+  return [...document.querySelectorAll('#tbody tr')].map(tr=>({
+    product_name:tr.querySelector('.name').value,
+    qty:parseNum(tr.querySelector('.qty').value),
+    tax_rate:parseNum(tr.querySelector('.tax').value)===8?8:10,
+    input_mode:tr.querySelector('.mode').value,
+    unit_price_input:parseNum(tr.querySelector('.price').value),
+    tr
+  }));
+}
+
+function calc(){
+  const rows=collect();
+  const mode='floor';
+  let base8=0,base10=0;
+  const computed=rows.map(r=>{
+    if(!r.qty||!r.unit_price_input)return{...r,base:0};
+    if(r.input_mode==='inclusive'){const incl=r.qty*r.unit_price_input;const base=roundBy(incl/(1+r.tax_rate/100),mode);if(r.tax_rate===8)base8+=base;else base10+=base;return{...r,base};}
+    const base=r.qty*r.unit_price_input;if(r.tax_rate===8)base8+=base;else base10+=base;return{...r,base};
+  });
+  const tax8=roundBy(base8*0.08,mode),tax10=roundBy(base10*0.10,mode);
+  computed.forEach(r=>{r.tr.querySelector('.base').textContent=fmt(r.base);});
+  const subtotal=base8+base10,total=subtotal+tax8+tax10;
+  document.getElementById('v_subtotal').textContent=fmt(subtotal);
+  document.getElementById('v_tax10').textContent=fmt(tax10);
+  document.getElementById('v_tax8').textContent=fmt(tax8);
+  document.getElementById('v_total').textContent=fmt(total);
+  document.getElementById('v_total2').textContent=fmt(total);
+}
+
+async function downloadPDF(){
+  const btn=document.getElementById('pdfBtn');
+  btn.disabled=true;btn.textContent='生成中...';
+  try{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:fixed;left:-3000px;top:0;width:940px;overflow:visible;z-index:-999';
+    const clone=document.getElementById('paper').cloneNode(true);
+    clone.removeAttribute('id');
+    wrap.appendChild(clone);
+    document.body.appendChild(wrap);
+    // ── 1. Replace form elements with plain text spans ──
+    clone.querySelectorAll('input:not([type=hidden]),select,textarea').forEach(el=>{
+      const span=document.createElement('span');
+      span.textContent=el.tagName==='SELECT'?(el.options[el.selectedIndex]?.text||el.value):el.value;
+      if(el.style.textAlign)span.style.textAlign=el.style.textAlign;
+      if(el.style.width==='100%'){span.style.display='block';span.style.width='100%';}
+      el.classList.forEach(c=>span.classList.add(c));
+      el.parentNode.replaceChild(span,el);
+    });
+    // ── 2. Remove 操作 column ──
+    clone.querySelectorAll('.op-col').forEach(el=>el.remove());
+    // ── Fix column headers for PDF ──
+    clone.querySelectorAll('.items thead th').forEach(th=>{
+      th.textContent=th.textContent.replace('（商品マスタ選択/自由入力）','').replace('入力単価','単価').replace('入力区分','区分');
+    });
+    // ── 3. Force tfoot font size via inline style ──
+    clone.querySelectorAll('tfoot td, tfoot th').forEach(td=>{td.style.setProperty('font-size','12px','important');td.style.setProperty('font-weight','400','important');});
+    // ── Force .name size (customer/company name, not table cells) ──
+    clone.querySelectorAll('.party .name').forEach(el=>{el.style.fontSize='22px';el.style.fontWeight='400';});
+    // ── Force amount value size ──
+    const av=clone.querySelector('.amount .v');if(av)av.style.fontSize='26px',av.style.fontWeight='400';
+    // ── 4. Fix text colors ──
+    clone.querySelectorAll('input[type=date],input[type=text],input[type=number],input,.meta .row span').forEach(el=>{el.style.color='#111827';});
+    // ── 5. Move stamp into 発行者 block ──
+    const issuerBlock=clone.querySelectorAll('.block')[1];
+    const cs=clone.querySelector('.stamp-wrap');
+    if(cs&&issuerBlock){
+      issuerBlock.style.position='relative';
+      issuerBlock.style.minHeight='100px';
+      cs.style.cssText='position:absolute;right:8px;top:8px;left:auto;bottom:auto;cursor:default;z-index:30';
+      issuerBlock.appendChild(cs);
+    }
+    const st=document.createElement('style');
+    st.textContent='.pdfc{border:1px solid #d8deea!important;border-radius:12px!important;padding:26px 26px 30px!important;width:900px!important;max-width:none!important;position:relative!important;background:#fff!important}'
+      +'.pdfc .doc-head{display:flex!important;flex-direction:row!important;justify-content:space-between!important;align-items:flex-start!important;margin-bottom:18px!important;gap:16px!important}'
+      +'.pdfc .doc-title{font-size:38px!important;font-weight:800!important;letter-spacing:.18em!important;line-height:1.05!important;white-space:nowrap!important}'
+      +'.pdfc .meta{border:1px solid #d8dce3!important;border-radius:8px!important;padding:10px 16px!important;font-size:14px!important;min-width:240px!important;margin-left:auto!important;flex-shrink:0!important;width:auto!important}'
+      +'.pdfc .party{display:grid!important;grid-template-columns:1fr 1fr!important;gap:14px!important;margin-bottom:14px!important}'
+      +'.pdfc .amount .l{font-size:18px!important;font-weight:500!important}'
+      +'.pdfc .items{display:table!important;overflow:visible!important;width:100%!important;border-collapse:collapse!important}'
+      +'.pdfc .op-col{display:none!important}'
+      +'.pdfc .items tfoot td{font-size:12px!important;font-weight:400!important}'
+      +'.pdfc .name{font-size:22px!important;font-weight:400!important}'
+      +'.pdfc .items td span.name{font-size:13px!important;font-weight:400!important;border-bottom:none!important;padding:0!important;margin:0!important;display:inline!important}'
+      +'.pdfc .amount .v{font-size:26px!important;font-weight:400!important}'
+      +'.pdfc .memo-wrap{border:none!important;padding:4px 0!important}'
+      +'.pdfc .issuer{min-height:0!important}';
+    document.head.appendChild(st);
+    clone.classList.add('pdfc');
+    await new Promise(r=>setTimeout(r,150));
+    const canvas=await html2canvas(clone,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#ffffff',logging:false});
+    document.body.removeChild(wrap);st.remove();
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    const pw=pdf.internal.pageSize.getWidth();
+    const ph=(canvas.height*pw)/canvas.width;
+    pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',0,0,pw,ph);
+    pdf.save((document.getElementById('doc_no').value||'領収書')+'.pdf');
+  }catch(e){alert('PDF生成に失敗しました');console.error(e);}
+  finally{btn.disabled=false;btn.textContent='PDF 保存';}
+}
+
+function payload(){return {doc_no:doc_no.value,customer_name:customer.value,doc_date:doc_date.value,memo:memo.value,rounding:'floor',items:collect().map(r=>({product_name:r.product_name,qty:r.qty,tax_rate:r.tax_rate,input_mode:r.input_mode,unit_price_input:r.unit_price_input}))};}
+async function saveDoc(){const p=payload();if(!p.doc_no||!p.customer_name||!p.doc_date){alert('領収書番号・宛先名・発行日は必須です');return;}if(doc_id.value){const r=await api('/api/receipts/'+doc_id.value,'PUT',p);if(!r.ok){alert(r.data?.error||'更新に失敗しました');return;}alert('更新しました');}else{const r=await api('/api/receipts','POST',p);if(!r.ok){alert(r.data?.error||'保存に失敗しました');return;}doc_id.value=r.data.id;alert('保存しました');}}
+async function sendDoc(){if(!doc_id.value){alert('先に保存してください');return;}const r=await api('/api/receipts/'+doc_id.value+'/send','POST');if(!r.ok){alert(r.data?.error||'送信に失敗しました');return;}alert('送信済みにしました');}
+
+(async function init(){
+  const d=new Date().toISOString().slice(0,10);
+  doc_no.value='REC-'+d.replace(/-/g,'');doc_date.value=d;
+  await loadProductsForSuggest();await loadCompanyPreset();
+  const fromId=new URLSearchParams(location.search).get('from');
+  if(fromId){
+    const r=await api('/api/requests/'+fromId);
+    if(r.ok&&r.data){
+      const src=r.data;
+      customer.value=src.customer_name||'';
+      memo.value=src.memo||'';
+      (src.items||[]).forEach(addRow);
+    }
+  } else {
+    addRow();
+  }
+  if(window.matchMedia('(max-width:768px)').matches){
+    const issuerBlock=document.querySelectorAll('.block')[1];const stampWrap=document.getElementById('stamp_wrap');
+    if(issuerBlock&&stampWrap){issuerBlock.style.position='relative';issuerBlock.appendChild(stampWrap);stampWrap.style.cssText='position:absolute;right:8px;bottom:8px;left:auto;top:auto;cursor:default';}
+  }else{
+    bindStampDrag();if(!loadStampPos())setTimeout(resetStampPos,0);
+    window.addEventListener('resize',()=>{const w=document.getElementById('stamp_wrap');applyStampPos(parseFloat(w.style.left)||0,parseFloat(w.style.top)||0);});
+    window.addEventListener('beforeprint',()=>{const paper=document.getElementById('paper');const wrap=document.getElementById('stamp_wrap');const safeX=Math.min(parseFloat(wrap.style.left)||0,paper.clientWidth-wrap.offsetWidth-20);const safeY=Math.min(parseFloat(wrap.style.top)||0,paper.clientHeight-wrap.offsetHeight-24);applyStampPos(safeX,safeY);saveStampPos();});
+  }
+})();
+</script>
+</body>
+</html>

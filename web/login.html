@@ -1,0 +1,10 @@
+﻿<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>登录</title><link rel='stylesheet' href='/common.css'></head><body>
+<div style='max-width:360px;margin:12vh auto' class='card'>
+<h1>登录</h1><input id='email' placeholder='邮箱'><input id='password' type='password' placeholder='密码'><input id='company' placeholder='注册时公司名（注册用）'>
+<div class='row'><button onclick='login()'>登录</button><button onclick='register()'>注册</button></div><div id='msg' class='muted'></div>
+</div>
+<script>
+async function call(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});const d=await r.json();return{ok:r.ok,d};}
+async function login(){const r=await call('/api/auth/login',{email:email.value,password:password.value});if(!r.ok){msg.textContent=r.d.error||'失败';return;}localStorage.setItem('token',r.d.token);location.href='/company.html';}
+async function register(){const r=await call('/api/auth/register',{email:email.value,password:password.value,companyName:company.value});if(!r.ok){msg.textContent=r.d.error||'失败';return;}localStorage.setItem('token',r.d.token);location.href='/company.html';}
+</script></body></html>

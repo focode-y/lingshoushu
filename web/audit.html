@@ -1,0 +1,5 @@
+﻿<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><link rel='stylesheet' href='/common.css'><title>操作记录</title></head><body><script src='/common.js'></script><script>
+shell('操作记录','audit',`<div class='card'><button onclick='load()'>刷新</button><table><thead><tr><th>ID</th><th>时间</th><th>用户ID</th><th>动作</th><th>详情</th></tr></thead><tbody id='tb'></tbody></table></div>`);
+async function load(){const r=await api('/api/audit-logs');if(!r.ok)return;tb.innerHTML='';r.data.forEach(x=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${x.id}</td><td>${x.created_at}</td><td>${x.user_id}</td><td>${x.action}</td><td>${x.detail||''}</td>`;tb.appendChild(tr);});}
+load();
+</script></body></html>

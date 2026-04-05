@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<title>商品管理</title>
+<style>
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:24px;width:90%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18)}
+.modal h2{margin:0 0 16px;font-size:17px}
+.field{margin-bottom:11px}
+.field label{display:block;font-size:12px;color:#6b7280;margin-bottom:3px}
+.field input,.field select{width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box}
+.mrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.import-panel{background:#f8faff;border:1px solid #dde3f5;border-radius:10px;padding:16px;margin-bottom:14px}
+.import-panel p{margin:6px 0;font-size:13px;color:#6b7280}
+.preview-wrap{max-height:280px;overflow-y:auto;margin-top:10px}
+.preview-table{width:100%;border-collapse:collapse;font-size:12px}
+.preview-table th,.preview-table td{border:1px solid #e6eaf3;padding:4px 8px;white-space:nowrap}
+.preview-table th{background:#f1f5f9;font-weight:600}
+.tag-new{color:#059669;font-weight:700}
+.tag-skip{color:#9ca3af}
+.tag-err{color:#dc2626;font-weight:700}
+.log-in{color:#059669;font-weight:600}
+.log-out{color:#dc2626;font-weight:600}
+.stock-neg{color:#dc2626;font-weight:700}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="/common.js"></script>
+<script>
+shell('商品管理', 'products', `
+<div class='card'>
+  <div class='row' style='margin-bottom:12px;flex-wrap:wrap;gap:8px'>
+    <button onclick='openAddModal()'>＋ 新規商品</button>
+    <button onclick='toggleImport()'>Excel / CSV インポート</button>
+  </div>
+
+  <div class='import-panel' id='importPanel' style='display:none'>
+    <b>Excel / CSV インポート</b>
+    <p>対応列（ヘッダー名で自動認識）：商品编码/コード/code　商品名/品名/name　税率　单价/単価/price　备注/メモ/note</p>
+    <p>商品编码が既存の場合はスキップ。商品名は必須。</p>
+    <div class='row' style='gap:8px;align-items:center'>
+      <input type='file' id='importFile' accept='.xlsx,.xls,.csv' onchange='parseFile(this)' style='flex:1'>
+    </div>
+    <div class='preview-wrap' id='previewWrap'></div>
+    <div class='row' style='margin-top:10px;gap:8px' id='confirmRow' style='display:none'>
+      <button onclick='doImport()'>✓ 確認インポート</button>
+      <button onclick='cancelImport()'>キャンセル</button>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>编码</th><th>品名</th><th>税率</th><th>デフォルト単価</th><th>現在庫</th><th>操作</th></tr></thead>
+    <tbody id='ptb'></tbody>
+  </table>
+</div>
+
+<div class='card' style='margin-top:12px'>
+  <b>入出庫履歴</b>
+  <div class='row' style='margin:10px 0;gap:8px;flex-wrap:wrap'>
+    <select id='logProduct'><option value=''>全商品</option></select>
+    <select id='logType'><option value=''>入庫 + 出庫</option><option value='in'>入庫のみ</option><option value='out'>出庫のみ</option></select>
+    <button onclick='loadLog()'>絞り込み</button>
+  </div>
+  <table>
+    <thead><tr><th>日時</th><th>区分</th><th>编码</th><th>品名</th><th>数量</th><th>単価 / 来源</th><th>関連請求書</th><th>備考</th></tr></thead>
+    <tbody id='ltb'></tbody>
+  </table>
+</div>
+
+<!-- 商品追加/編集 -->
+<div class='modal-overlay' id='prodModal'>
+  <div class='modal'>
+    <h2 id='prodModalTitle'>商品追加</h2>
+    <input type='hidden' id='edit_id'>
+    <div class='field'><label>商品编码（唯一識別子）</label><input id='edit_code' placeholder='例: SKU-001'></div>
+    <div class='field'><label>商品名 *</label><input id='edit_name' placeholder='商品名'></div>
+    <div class='field'><label>税率</label><select id='edit_tax'><option value='10'>10%</option><option value='8'>8%</option></select></div>
+    <div class='field'><label>デフォルト単価</label><input id='edit_price' type='number' min='0' value='0'></div>
+    <div class='field'><label>備考</label><input id='edit_note'></div>
+    <div class='mrow'><button onclick='submitProd()'>保存</button><button onclick='closeModal("prodModal")'>キャンセル</button></div>
+  </div>
+</div>
+
+<!-- 入庫 -->
+<div class='modal-overlay' id='inModal'>
+  <div class='modal'>
+    <h2>入庫登録</h2>
+    <input type='hidden' id='in_pid'>
+    <div class='field'><label>商品</label><input id='in_pname' readonly style='background:#f9fafb'></div>
+    <div class='field'><label>区分</label><select id='in_type'><option value='normal'>通常入庫</option><option value='initial'>初期在庫</option></select></div>
+    <div class='field'><label>数量 *</label><input id='in_qty' type='number' min='1' value='1'></div>
+    <div class='field'><label>仕入単価</label><input id='in_cost' type='number' min='0' value='0'></div>
+    <div class='field'><label>仕入先 / 来源</label><input id='in_supplier' placeholder='例: 株式会社〇〇'></div>
+    <div class='field'><label>仕入先領収書（画像 / PDF）</label><input id='in_file' type='file' accept='image/*,.pdf'></div>
+    <div class='field'><label>備考</label><input id='in_note'></div>
+    <div class='mrow'><button onclick='submitIn()'>登録</button><button onclick='closeModal("inModal")'>キャンセル</button></div>
+  </div>
+</div>
+
+<!-- 出庫 -->
+<div class='modal-overlay' id='outModal'>
+  <div class='modal'>
+    <h2>出庫登録</h2>
+    <input type='hidden' id='out_pid'>
+    <div class='field'><label>商品</label><input id='out_pname' readonly style='background:#f9fafb'></div>
+    <div class='field'><label>数量 *</label><input id='out_qty' type='number' min='1' value='1'></div>
+    <div class='field'><label>関連請求書（任意）</label><select id='out_req'><option value=''>なし</option></select></div>
+    <div class='field'><label>備考</label><input id='out_note'></div>
+    <div class='mrow'><button onclick='submitOut()'>登録</button><button onclick='closeModal("outModal")'>キャンセル</button></div>
+  </div>
+</div>
+`);
+
+// ── state ────────────────────────────────────────────────
+let products = [];
+let importRows = [];
+
+// ── utils ────────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+
+// ── products ─────────────────────────────────────────────
+async function loadProducts() {
+  const r = await api('/api/stock/summary');
+  if (!r.ok) return;
+  products = r.data;
+  const tb = document.getElementById('ptb');
+  tb.innerHTML = '';
+  const lp = document.getElementById('logProduct');
+  lp.innerHTML = '<option value="">全商品</option>';
+  products.forEach(p => {
+    const stockCls = p.stock < 0 ? 'stock-neg' : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.code||'—'}</td><td>${p.name}</td><td>${p.default_tax_rate}%</td><td>${fmt(p.default_unit_price)}</td>`
+      + `<td class='${stockCls}'>${p.stock}</td>`
+      + `<td class='row' style='gap:4px'>`
+      + `<button onclick='openIn(${p.id},"${esc(p.name)}")'>入庫</button>`
+      + `<button onclick='openOut(${p.id},"${esc(p.name)}")'>出庫</button>`
+      + `<button onclick='openEdit(${p.id})'>編集</button>`
+      + `<button onclick='delProd(${p.id})'>削除</button></td>`;
+    tb.appendChild(tr);
+    const op = document.createElement('option');
+    op.value = p.id; op.textContent = `${p.code ? p.code+' ' : ''}${p.name}`;
+    lp.appendChild(op);
+  });
+}
+
+function esc(s) { return String(s).replace(/"/g, '&quot;'); }
+
+function openAddModal() {
+  ['edit_id','edit_code','edit_name','edit_note'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('edit_tax').value = '10';
+  document.getElementById('edit_price').value = '0';
+  document.getElementById('prodModalTitle').textContent = '商品追加';
+  openModal('prodModal');
+}
+
+function openEdit(id) {
+  const p = products.find(x => x.id === id); if (!p) return;
+  document.getElementById('prodModalTitle').textContent = '商品編集';
+  document.getElementById('edit_id').value = id;
+  document.getElementById('edit_code').value = p.code || '';
+  document.getElementById('edit_name').value = p.name;
+  document.getElementById('edit_tax').value = String(p.default_tax_rate);
+  document.getElementById('edit_price').value = String(p.default_unit_price);
+  document.getElementById('edit_note').value = p.note || '';
+  openModal('prodModal');
+}
+
+async function submitProd() {
+  const id = document.getElementById('edit_id').value;
+  const body = {
+    code: document.getElementById('edit_code').value.trim(),
+    name: document.getElementById('edit_name').value.trim(),
+    default_tax_rate: Number(document.getElementById('edit_tax').value),
+    default_unit_price: Number(document.getElementById('edit_price').value || 0),
+    note: document.getElementById('edit_note').value.trim(),
+  };
+  if (!body.name) { alert('商品名は必須です'); return; }
+  const r = id ? await api('/api/products/'+id, 'PUT', body) : await api('/api/products', 'POST', body);
+  if (!r.ok) { alert(r.data?.error || '保存に失敗しました'); return; }
+  closeModal('prodModal');
+  await loadProducts();
+}
+
+async function delProd(id) {
+  if (!confirm('削除しますか？')) return;
+  const r = await api('/api/products/'+id, 'DELETE');
+  if (!r.ok) { alert(r.data?.error || '削除に失敗しました'); return; }
+  await loadProducts();
+  await loadLog();
+}
+
+// ── stock in ─────────────────────────────────────────────
+function openIn(id, name) {
+  document.getElementById('in_pid').value = id;
+  document.getElementById('in_pname').value = name;
+  document.getElementById('in_type').value = 'normal';
+  document.getElementById('in_qty').value = '1';
+  document.getElementById('in_cost').value = '0';
+  document.getElementById('in_supplier').value = '';
+  document.getElementById('in_file').value = '';
+  document.getElementById('in_note').value = '';
+  openModal('inModal');
+}
+
+async function submitIn() {
+  const qty = Number(document.getElementById('in_qty').value);
+  if (!qty || qty <= 0) { alert('数量を入力してください'); return; }
+  const fd = new FormData();
+  fd.append('product_id', document.getElementById('in_pid').value);
+  fd.append('qty', qty);
+  fd.append('unit_cost', document.getElementById('in_cost').value);
+  fd.append('supplier', document.getElementById('in_supplier').value);
+  fd.append('note', document.getElementById('in_note').value);
+  fd.append('type', document.getElementById('in_type').value);
+  const file = document.getElementById('in_file').files[0];
+  if (file) fd.append('receipt_file', file);
+  const res = await fetch('/api/stock/in', { method: 'POST', headers: authHeaders(), body: fd });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(d?.error || '登録に失敗しました'); return; }
+  closeModal('inModal');
+  await loadProducts(); await loadLog();
+}
+
+// ── stock out ────────────────────────────────────────────
+async function openOut(id, name) {
+  document.getElementById('out_pid').value = id;
+  document.getElementById('out_pname').value = name;
+  document.getElementById('out_qty').value = '1';
+  document.getElementById('out_note').value = '';
+  const sel = document.getElementById('out_req');
+  sel.innerHTML = '<option value="">なし</option>';
+  const r = await api('/api/requests');
+  if (r.ok) r.data.forEach(x => {
+    const op = document.createElement('option');
+    op.value = x.id;
+    op.textContent = `${x.doc_no}　${x.customer_name}　${x.doc_date}`;
+    sel.appendChild(op);
+  });
+  openModal('outModal');
+}
+
+async function submitOut() {
+  const qty = Number(document.getElementById('out_qty').value);
+  if (!qty || qty <= 0) { alert('数量を入力してください'); return; }
+  const body = {
+    product_id: Number(document.getElementById('out_pid').value),
+    qty,
+    request_id: document.getElementById('out_req').value || null,
+    note: document.getElementById('out_note').value,
+  };
+  const r = await api('/api/stock/out', 'POST', body);
+  if (!r.ok) { alert(r.data?.error || '登録に失敗しました'); return; }
+  closeModal('outModal');
+  await loadProducts(); await loadLog();
+}
+
+// ── log ──────────────────────────────────────────────────
+async function loadLog() {
+  const pid = document.getElementById('logProduct').value;
+  const type = document.getElementById('logType').value;
+  const qs = pid ? '?product_id=' + pid : '';
+  const [inR, outR] = await Promise.all([api('/api/stock/in'+qs), api('/api/stock/out'+qs)]);
+  let rows = [];
+  if (inR.ok  && type !== 'out') inR.data.forEach(x  => rows.push({ ...x,  _type: 'in'  }));
+  if (outR.ok && type !== 'in')  outR.data.forEach(x => rows.push({ ...x, _type: 'out' }));
+  rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const tb = document.getElementById('ltb');
+  tb.innerHTML = '';
+  rows.slice(0, 100).forEach(x => {
+    const p = products.find(p => p.id === x.product_id) || {};
+    const typeHtml = x._type === 'in'
+      ? `<span class='log-in'>入庫${x.type === 'initial' ? '<small>（初期）</small>' : ''}</span>`
+      : `<span class='log-out'>出庫</span>`;
+    const detail = x._type === 'in'
+      ? [x.unit_cost ? '¥'+fmt(x.unit_cost) : '', x.supplier].filter(Boolean).join(' / ') || '—'
+      : '—';
+    const reqLink = x.request_id ? `#${x.request_id}` : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${(x.created_at||'').slice(0,16)}</td><td>${typeHtml}</td><td>${p.code||'—'}</td><td>${p.name||'—'}</td><td>${x.qty}</td><td>${detail}</td><td>${reqLink}</td><td>${x.note||''}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// ── import ───────────────────────────────────────────────
+function toggleImport() {
+  const p = document.getElementById('importPanel');
+  p.style.display = p.style.display === 'none' ? '' : 'none';
+}
+
+const COL_ALIASES = {
+  code:     ['商品编码','コード','code','sku','商品コード'],
+  name:     ['商品名','品名','name','商品名称','名称'],
+  tax_rate: ['税率','tax_rate','消費税率'],
+  price:    ['默认单价','単価','price','default_unit_price','单价','デフォルト単価'],
+  note:     ['备注','メモ','note','備考'],
+};
+
+function findCol(headers, aliases) {
+  for (const a of aliases) {
+    const i = headers.findIndex(h => String(h).toLowerCase().trim() === a.toLowerCase());
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+function parseFile(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (data.length < 2) { alert('データが空です'); return; }
+    const headers = data[0].map(h => String(h));
+    const ci = { code: findCol(headers, COL_ALIASES.code), name: findCol(headers, COL_ALIASES.name), tax_rate: findCol(headers, COL_ALIASES.tax_rate), price: findCol(headers, COL_ALIASES.price), note: findCol(headers, COL_ALIASES.note) };
+    if (ci.name < 0) { alert('「商品名」列が見つかりません。ヘッダー行を確認してください。'); return; }
+    const existCodes = new Set(products.map(p => p.code).filter(Boolean));
+    importRows = data.slice(1).filter(r => r.some(c => c !== '')).map(r => {
+      const code = ci.code >= 0 ? String(r[ci.code] || '').trim() : '';
+      const name = ci.name >= 0 ? String(r[ci.name] || '').trim() : '';
+      const tax_rate = ci.tax_rate >= 0 ? (Number(r[ci.tax_rate]) === 8 ? 8 : 10) : 10;
+      const price = ci.price >= 0 ? Number(r[ci.price]) || 0 : 0;
+      const note = ci.note >= 0 ? String(r[ci.note] || '') : '';
+      const status = !name ? 'error' : (code && existCodes.has(code)) ? 'skipped' : 'new';
+      return { code, name, tax_rate, price, note, status };
+    });
+    renderPreview();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderPreview() {
+  const cnt = { new: 0, skipped: 0, error: 0 };
+  importRows.forEach(r => cnt[r.status]++);
+  let html = `<p style='font-size:13px;margin:8px 0'>`
+    + `<span class='tag-new'>新規 ${cnt.new}件</span>　`
+    + `<span class='tag-skip'>スキップ ${cnt.skipped}件</span>　`
+    + `<span class='tag-err'>エラー ${cnt.error}件</span></p>`;
+  html += `<table class='preview-table'><thead><tr><th>状態</th><th>编码</th><th>品名</th><th>税率</th><th>単価</th><th>備考</th></tr></thead><tbody>`;
+  importRows.forEach(r => {
+    const tag = r.status === 'new' ? `<span class='tag-new'>新規</span>`
+      : r.status === 'skipped' ? `<span class='tag-skip'>スキップ</span>`
+      : `<span class='tag-err'>エラー</span>`;
+    html += `<tr><td>${tag}</td><td>${r.code||'—'}</td><td>${r.name||'（空）'}</td><td>${r.tax_rate}%</td><td>${fmt(r.price)}</td><td>${r.note}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('previewWrap').innerHTML = html;
+  document.getElementById('confirmRow').style.display = cnt.new > 0 ? '' : 'none';
+}
+
+async function doImport() {
+  const rows = importRows.filter(r => r.status === 'new');
+  if (!rows.length) { alert('インポートする新規データがありません'); return; }
+  const r = await api('/api/products/import', 'POST', { rows });
+  if (!r.ok) { alert(r.data?.error || 'インポートに失敗しました'); return; }
+  alert(`完了：新規 ${r.data.created}件 / スキップ ${r.data.skipped}件`);
+  cancelImport();
+  await loadProducts();
+}
+
+function cancelImport() {
+  importRows = [];
+  document.getElementById('previewWrap').innerHTML = '';
+  document.getElementById('importFile').value = '';
+  document.getElementById('confirmRow').style.display = 'none';
+  document.getElementById('importPanel').style.display = 'none';
+}
+
+// ── init ─────────────────────────────────────────────────
+(async function init() {
+  await loadProducts();
+  await loadLog();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+﻿<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><link rel='stylesheet' href='/common.css'><title>总台账</title></head><body><script src='/common.js'></script><script>
+shell('总台账','ledger',`<div class='card'><div class='row'><input id='year' type='number' value='2026'><button onclick='load()'>刷新</button></div><table><thead><tr><th>月份</th><th>月收入（已发送领収书）</th></tr></thead><tbody id='tb'></tbody><tfoot><tr><th>全年合计</th><th id='year_total'>0</th></tr></tfoot></table><p class='muted'>口径：仅统计状态为已发送的领収书，按收款日期归属。</p></div>`);
+async function load(){const r=await api('/api/ledger/summary?year='+Number(year.value||new Date().getFullYear()));if(!r.ok){alert(r.data?.error||'加载失败');return;}tb.innerHTML='';r.data.months.forEach(m=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${m.month}月</td><td>${fmt(m.total)}</td>`;tb.appendChild(tr);});year_total.textContent=fmt(r.data.year_total);}
+load();
+</script></body></html>

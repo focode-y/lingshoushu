@@ -1,0 +1,84 @@
+﻿<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>账票SaaS MVP</title>
+<style>
+body{font-family:Segoe UI,Arial,sans-serif;background:#f6f7fb;margin:0}
+.wrap{max-width:1200px;margin:16px auto;padding:0 12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:#fff;border:1px solid #d9dce3;border-radius:10px;padding:12px}
+h2{margin:0 0 10px;font-size:16px}input,textarea,select,button{padding:7px;margin:4px 0}table{width:100%;border-collapse:collapse}th,td{border:1px solid #e4e7ee;padding:6px;font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap}.muted{font-size:12px;color:#666}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row"><button onclick="logout()">退出登录</button><span class="muted" id="me"></span></div>
+  <div class="grid">
+    <section class="card">
+      <h2>公司预设</h2>
+      <input id="company_name" placeholder="公司名"><input id="address" placeholder="地址"><input id="phone" placeholder="电话"><input id="registration_no" placeholder="注册号"><textarea id="bank_info" placeholder="银行信息"></textarea>
+      <div class="row"><input id="stamp" type="file" accept="image/png"><button onclick="saveCompany()">保存公司资料</button><button onclick="uploadStamp()">上传印章</button></div>
+      <img id="stampPreview" style="max-width:100px;max-height:100px;display:block;">
+    </section>
+
+    <section class="card">
+      <h2>商品库</h2>
+      <div class="row"><input id="p_name" placeholder="名称"><select id="p_tax"><option value="10">10%</option><option value="8">8%</option></select><input id="p_price" type="number" placeholder="默认单价"><input id="p_note" placeholder="备注"><button onclick="addProduct()">新增</button></div>
+      <table><thead><tr><th>ID</th><th>名称</th><th>税率</th><th>单价</th><th>操作</th></tr></thead><tbody id="products"></tbody></table>
+    </section>
+
+    <section class="card" style="grid-column:1 / span 2">
+      <h2>领收书（保存/发送）</h2>
+      <div class="row">
+        <input id="r_id" type="hidden"><input id="receipt_no" placeholder="编号"><input id="customer_name" placeholder="客户名"><input id="receipt_date" type="date"><select id="rounding"><option value="round">四舍五入</option><option value="floor">舍去</option><option value="ceil">进位</option></select>
+      </div>
+      <div class="row"><input id="memo" placeholder="备注" style="min-width:300px"><button onclick="addItemRow()">新增明细行</button><button onclick="saveReceipt()">保存</button><button onclick="markSent()">设为已发送</button></div>
+      <table><thead><tr><th>品名</th><th>数量</th><th>税率</th><th>模式</th><th>输入单价</th><th>操作</th></tr></thead><tbody id="items"></tbody></table>
+      <p class="muted">状态流转：已保存 -> 已发送（记录发送时间和操作人）</p>
+    </section>
+
+    <section class="card" style="grid-column:1 / span 2">
+      <h2>领收书列表</h2>
+      <div class="row"><select id="q_status"><option value="">全部</option><option value="saved">已保存</option><option value="sent">已发送</option></select><input id="q_from" type="date"><input id="q_to" type="date"><input id="q" placeholder="编号/客户"><button onclick="loadReceipts()">查询</button></div>
+      <table><thead><tr><th>ID</th><th>编号</th><th>客户</th><th>收款日</th><th>状态</th><th>金额</th><th>发送时间</th><th>操作时间</th><th>操作</th></tr></thead><tbody id="receipts"></tbody></table>
+    </section>
+
+    <section class="card" style="grid-column:1 / span 2">
+      <h2>台账汇总（按领收书收款日期）</h2>
+      <div class="row"><input id="sum_year" type="number" value="2026"><button onclick="loadSummary()">刷新汇总</button></div>
+      <div id="summary"></div>
+    </section>
+  </div>
+</div>
+<script>
+const token=localStorage.getItem('token'); if(!token){location.href='/login.html';}
+const H={'Content-Type':'application/json','Authorization':'Bearer '+token};
+const req=(u,m='GET',b)=>fetch(u,{method:m,headers:H,body:b?JSON.stringify(b):undefined}).then(async r=>({ok:r.ok,d:await r.json()}));
+function logout(){localStorage.removeItem('token');location.href='/login.html';}
+function rowItem(v={product_name:'',qty:1,tax_rate:10,input_mode:'inclusive',unit_price_input:0}){const tr=document.createElement('tr');tr.innerHTML=`<td><input value="${v.product_name||''}"></td><td><input type="number" value="${v.qty||1}"></td><td><select><option value="10">10%</option><option value="8">8%</option></select></td><td><select><option value="inclusive">税込</option><option value="exclusive">税抜</option></select></td><td><input type="number" value="${v.unit_price_input||0}"></td><td><button onclick="this.closest('tr').remove()">删</button></td>`;tr.children[2].querySelector('select').value=String(v.tax_rate||10);tr.children[3].querySelector('select').value=v.input_mode||'inclusive';items.appendChild(tr);} 
+function addItemRow(){rowItem();}
+function collectItems(){return [...items.querySelectorAll('tr')].map(tr=>({product_name:tr.children[0].querySelector('input').value,qty:Number(tr.children[1].querySelector('input').value||0),tax_rate:Number(tr.children[2].querySelector('select').value||10),input_mode:tr.children[3].querySelector('select').value,unit_price_input:Number(tr.children[4].querySelector('input').value||0)}));}
+
+async function init(){const m=await req('/api/auth/me');if(!m.ok){logout();return;}me.textContent=`登录账号: ${m.d.email}`;await loadCompany();await loadProducts();await loadReceipts();await loadSummary();if(!receipt_no.value)receipt_no.value='REC-'+new Date().toISOString().slice(0,10).replace(/-/g,'');if(!receipt_date.value)receipt_date.value=new Date().toISOString().slice(0,10);if(items.children.length===0)addItemRow();}
+async function loadCompany(){const r=await req('/api/company');if(!r.ok)return;Object.assign(window,r.d);company_name.value=r.d.company_name||'';address.value=r.d.address||'';phone.value=r.d.phone||'';registration_no.value=r.d.registration_no||'';bank_info.value=r.d.bank_info||'';stampPreview.src=r.d.stamp_path||'';}
+async function saveCompany(){await req('/api/company','PUT',{company_name:company_name.value,address:address.value,phone:phone.value,registration_no:registration_no.value,bank_info:bank_info.value});alert('已保存公司资料');}
+async function uploadStamp(){if(!stamp.files[0])return;const fd=new FormData();fd.append('stamp',stamp.files[0]);const r=await fetch('/api/company/stamp',{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd});const d=await r.json();if(r.ok){stampPreview.src=d.stamp_path;alert('印章已上传');}}
+
+async function loadProducts(){const r=await req('/api/products');if(!r.ok)return;products.innerHTML='';r.d.forEach(x=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${x.id}</td><td>${x.name}</td><td>${x.default_tax_rate}%</td><td>${x.default_unit_price}</td><td><button onclick="useProduct(${x.id},'${x.name.replace(/'/g,"\\'")}',${x.default_tax_rate},${x.default_unit_price})">带入明细</button><button onclick="delProduct(${x.id})">删</button></td>`;products.appendChild(tr);});}
+function useProduct(id,name,tax,price){rowItem({product_name:name,qty:1,tax_rate:tax,input_mode:'inclusive',unit_price_input:price});}
+async function addProduct(){await req('/api/products','POST',{name:p_name.value,default_tax_rate:Number(p_tax.value),default_unit_price:Number(p_price.value||0),note:p_note.value});p_name.value='';p_price.value='';p_note.value='';await loadProducts();}
+async function delProduct(id){await req('/api/products/'+id,'DELETE');await loadProducts();}
+
+async function saveReceipt(){const payload={receipt_no:receipt_no.value,customer_name:customer_name.value,receipt_date:receipt_date.value,memo:memo.value,rounding:rounding.value,items:collectItems()};if(r_id.value){await req('/api/receipts/'+r_id.value,'PUT',payload);alert('已更新');}else{const r=await req('/api/receipts','POST',payload);if(r.ok){r_id.value=r.d.id;alert('已保存');}}await loadReceipts();await loadSummary();}
+async function markSent(){if(!r_id.value){alert('请先保存');return;}await req('/api/receipts/'+r_id.value+'/send','POST');alert('已设为已发送');await loadReceipts();await loadSummary();}
+async function loadReceipts(){const qstr=new URLSearchParams({status:q_status.value,from:q_from.value,to:q_to.value,q:q.value});const r=await req('/api/receipts?'+qstr.toString());if(!r.ok)return;receipts.innerHTML='';r.d.forEach(x=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${x.id}</td><td>${x.receipt_no}</td><td>${x.customer_name}</td><td>${x.receipt_date}</td><td>${x.status}</td><td>${x.total}</td><td>${x.sent_at||''}</td><td>${x.updated_at}</td><td><button onclick="loadReceipt(${x.id})">编辑</button></td>`;receipts.appendChild(tr);});}
+async function loadReceipt(id){const r=await req('/api/receipts/'+id);if(!r.ok)return;const d=r.d;r_id.value=d.id;receipt_no.value=d.receipt_no;customer_name.value=d.customer_name;receipt_date.value=d.receipt_date;memo.value=d.memo||'';items.innerHTML='';(d.items||[]).forEach(rowItem);}
+
+async function loadSummary(){const year=Number(sum_year.value||new Date().getFullYear());const r=await req('/api/ledger/summary?year='+year);if(!r.ok)return;summary.innerHTML=`<p><b>${year}年总收入（已发送）: ${r.d.year_total}</b></p>`+r.d.months.map(m=>`<div>${m.month}月: ${m.total}</div>`).join('');}
+init();
+</script>
+</body>
+</html>
